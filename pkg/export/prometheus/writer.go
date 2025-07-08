@@ -112,7 +112,7 @@ func (w *expWriter) writeSample(val interface{}, labels ...string) {
 func (w *expWriter) write() error {
 	mboxOpen, err := mbox.Open()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to open mbox: %w", err)
 	}
 
 	defer mboxOpen.Close()
@@ -129,7 +129,7 @@ func (w *expWriter) write() error {
 
 	rev, err := mboxOpen.GetFirmwareRevision()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to get firmware revision: %w", err)
 	}
 
 	w.writeSample(rev)
@@ -138,7 +138,7 @@ func (w *expWriter) write() error {
 
 	model, err := mboxOpen.GetBoardModel()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to get board model: %w", err)
 	}
 
 	w.writeSample(model)
@@ -147,7 +147,7 @@ func (w *expWriter) write() error {
 
 	rev, err = mboxOpen.GetBoardRevision()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to get board revision: %w", err)
 	}
 
 	w.writeSample(rev)
@@ -165,7 +165,7 @@ func (w *expWriter) write() error {
 	for id, label := range powerLabelsByID {
 		powerState, err := mboxOpen.GetPowerState(id)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to get power state: %w", err)
 		}
 
 		w.writeSample(powerState, label)
@@ -179,7 +179,7 @@ func (w *expWriter) write() error {
 	for id, label := range clockLabelsByID {
 		clockRate, err := mboxOpen.GetClockRate(id)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to get clock rate: %w", err)
 		}
 
 		w.writeSample(clockRate, label)
@@ -190,7 +190,7 @@ func (w *expWriter) write() error {
 	for id, label := range clockLabelsByID {
 		clockRate, err := mboxOpen.GetClockRateMeasured(id)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to get measured clock rate: %w", err)
 		}
 
 		w.writeSample(clockRate, label)
@@ -200,7 +200,7 @@ func (w *expWriter) write() error {
 
 	turbo, err := mboxOpen.GetTurbo()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to get turbo: %w", err)
 	}
 
 	w.writeSample(formatBool(turbo))
@@ -219,7 +219,7 @@ func (w *expWriter) write() error {
 
 	temp, err := mboxOpen.GetTemperature()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to get temperature: %w", err)
 	}
 
 	w.writeSample(formatTemp(temp), "soc")
@@ -241,7 +241,7 @@ func (w *expWriter) write() error {
 
 	maxTemp, err := mboxOpen.GetMaxTemperature()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to get maximum temperature: %w", err)
 	}
 
 	w.writeSample(formatTemp(maxTemp), "soc")
@@ -263,7 +263,7 @@ func (w *expWriter) write() error {
 	for id, label := range voltageLabelsByID {
 		volts, err := mboxOpen.GetVoltage(id)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to get voltage: %w", err)
 		}
 
 		w.writeSample(formatVolts(volts), label)
@@ -274,7 +274,7 @@ func (w *expWriter) write() error {
 	for id, label := range voltageLabelsByID {
 		volts, err := mboxOpen.GetMinVoltage(id)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to get minimum voltage: %w", err)
 		}
 
 		w.writeSample(formatVolts(volts), label)
@@ -285,7 +285,7 @@ func (w *expWriter) write() error {
 	for id, label := range voltageLabelsByID {
 		volts, err := mboxOpen.GetMaxVoltage(id)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to get max voltage: %w", err)
 		}
 
 		w.writeSample(formatVolts(volts), label)

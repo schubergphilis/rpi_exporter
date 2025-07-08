@@ -152,8 +152,9 @@ func Open() (f *Mailbox, err error) {
 	if err == os.ErrNotExist {
 		return nil, ErrNotImplemented
 	}
+
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to open vcioFile: %w", err)
 	}
 
 	return &Mailbox{f: vcioFile}, nil
@@ -202,10 +203,9 @@ func (m *Mailbox) Do(tagID uint32, bufferBytes int, args ...uint32) ([]Tag, erro
 		debugf("  %02d: 0x%08X\n", i, v)
 	}
 
-	// Send message via ioctl
 	err := ioctl.Ioctl(m.f.Fd(), uintptr(mbIoctl), uintptr(unsafe.Pointer(&m.buf[0])))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to send message via ioctl: %w", err)
 	}
 
 	debugf("RX:\n")
