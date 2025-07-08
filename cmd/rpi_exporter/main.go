@@ -29,6 +29,7 @@ func main() {
 		}))
 		log.Printf("Listening on %s", *flagAddr)
 		http.ListenAndServe(*flagAddr, nil)
+
 		return
 	}
 

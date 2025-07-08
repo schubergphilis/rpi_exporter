@@ -63,6 +63,7 @@ func formatBool(b bool) string {
 	if b {
 		return "1"
 	}
+
 	return "0"
 }
 
@@ -75,6 +76,7 @@ type expWriter struct {
 // Write all metrics in Prometheus text-based exposition format.
 func Write(w io.Writer) error {
 	ew := &expWriter{w: w}
+
 	return ew.write()
 }
 

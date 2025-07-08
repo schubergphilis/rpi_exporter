@@ -61,6 +61,7 @@ func (t Tag) ID() uint32 {
 	if !t.IsValid() {
 		return 0
 	}
+
 	return t[0]
 }
 
@@ -69,6 +70,7 @@ func (t Tag) Cap() int {
 	if !t.IsValid() {
 		return 0
 	}
+
 	return int(t[1])
 }
 
@@ -96,6 +98,7 @@ func (t Tag) Value() []uint32 {
 	if !t.IsValid() {
 		return nil
 	}
+
 	return t[3 : 3+t.Len()/4]
 }
 
