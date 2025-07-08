@@ -236,7 +236,12 @@ func (w *expWriter) writeTemperatures(mboxOpen *mbox.Mailbox) error {
 	w.writeHeaderGauge("rpi_temperature_f", "Temperature of the SoC in degrees fahrenheit.", metricTypeGauge, "id")
 	w.writeSample(formatTemp(temp*9/5+32), "soc")
 
-	w.writeHeaderGauge("rpi_max_temperature_c", "Maximum temperature of the SoC in degrees celsius.", metricTypeGauge, "id")
+	w.writeHeaderGauge(
+		"rpi_max_temperature_c",
+		"Maximum temperature of the SoC in degrees celsius.",
+		metricTypeGauge,
+		"id",
+	)
 
 	maxTemp, err := mboxOpen.GetMaxTemperature()
 	if err != nil {
@@ -245,7 +250,11 @@ func (w *expWriter) writeTemperatures(mboxOpen *mbox.Mailbox) error {
 
 	w.writeSample(formatTemp(maxTemp), "soc")
 
-	w.writeHeaderGauge("rpi_max_temperature_f", "Maximum temperature of the SoC in degrees fahrenheit.", metricTypeGauge, "id")
+	w.writeHeaderGauge(
+		"rpi_max_temperature_f",
+		"Maximum temperature of the SoC in degrees fahrenheit.",
+		metricTypeGauge,
+		"id")
 	w.writeSample(formatTemp(maxTemp*9/5+32), "soc")
 
 	return nil
