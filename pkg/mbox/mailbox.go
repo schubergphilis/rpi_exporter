@@ -153,7 +153,7 @@ func Open() (*Mailbox, error) {
 	var vcioFile *os.File
 
 	vcioFile, err := os.OpenFile("/dev/vcio", os.O_RDONLY, os.ModePerm)
-	if err == os.ErrNotExist {
+	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNotImplemented
 	}
 
