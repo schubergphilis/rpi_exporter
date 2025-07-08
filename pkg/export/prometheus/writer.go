@@ -212,7 +212,7 @@ func (w *expWriter) write() error {
 	// Current SoC temperature
 	w.writeHeader(
 		"rpi_temperature_c",
-		"Temperature of the SoC in degrees celcius.",
+		"Temperature of the SoC in degrees celsius.",
 		metricTypeGauge,
 		"id",
 	)
@@ -225,7 +225,7 @@ func (w *expWriter) write() error {
 	w.writeSample(formatTemp(temp), "soc")
 	w.writeHeader(
 		"rpi_temperature_f",
-		"Temperature of the SoC in degrees farenheit.",
+		"Temperature of the SoC in degrees fahrenheit.",
 		metricTypeGauge,
 		"id",
 	)
@@ -234,7 +234,7 @@ func (w *expWriter) write() error {
 	// Max SoC temperature
 	w.writeHeader(
 		"rpi_max_temperature_c",
-		"Maximum temperature of the SoC in degrees celcius.",
+		"Maximum temperature of the SoC in degrees celsius.",
 		metricTypeGauge,
 		"id",
 	)
@@ -247,7 +247,7 @@ func (w *expWriter) write() error {
 	w.writeSample(formatTemp(maxTemp), "soc")
 	w.writeHeader(
 		"rpi_max_temperature_f",
-		"Maximum temperature of the SoC in degrees farenheit.",
+		"Maximum temperature of the SoC in degrees fahrenheit.",
 		metricTypeGauge,
 		"id",
 	)

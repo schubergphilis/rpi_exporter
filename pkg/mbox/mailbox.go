@@ -368,12 +368,12 @@ func (m *Mailbox) getTemperature(tag uint32) (float32, error) {
 	return float32(v) / 1000, nil
 }
 
-// GetTemperature returns the temperature of the SoC in degrees celcius.
+// GetTemperature returns the temperature of the SoC in degrees celsius.
 func (m *Mailbox) GetTemperature() (float32, error) {
 	return m.getTemperature(TagGetTemperature)
 }
 
-// GetMaxTemperature returns the maximum safe temperature of the SoC in degrees celcius.
+// GetMaxTemperature returns the maximum safe temperature of the SoC in degrees celsius.
 //
 // Overclock may be disabled above this temperature.
 func (m *Mailbox) GetMaxTemperature() (float32, error) {
