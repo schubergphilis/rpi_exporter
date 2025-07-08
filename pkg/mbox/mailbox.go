@@ -127,12 +127,12 @@ func ReadTag(tag []uint32) (Tag, error) {
 	}
 
 	if len(tag) < 3 {
-		return nil, fmt.Errorf("vcio: tag buffer is too small")
+		return nil, errors.New("vcio: tag buffer is too small")
 	}
 
 	sz := 3 + int(tag[1]/4) // TODO: fix unaligned buffer sizes
 	if len(tag) < sz {
-		return nil, fmt.Errorf("vcio: tag buffer is too small")
+		return nil, errors.New("vcio: tag buffer is too small")
 	}
 
 	return Tag(tag[:sz]), nil
