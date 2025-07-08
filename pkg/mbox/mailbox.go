@@ -179,76 +179,108 @@ func (m *Mailbox) Close() {
 // Do sends a single command tag and returns all response tags. Returned memory is only usable until
 // the next request is made.
 func (m *Mailbox) Do(tagID uint32, bufferBytes int, args ...uint32) ([]Tag, error) {
-	// Align buffer to 16-byte boundary
-	if m.buf == nil {
-		offset := uintptr(unsafe.Pointer(&m.bufUnaligned[0])) & 15
-		m.buf = m.bufUnaligned[16-offset : uintptr(len(m.bufUnaligned))-offset]
-	}
+	// Ensure buffer is aligned to 16-byte boundary
+	m.alignBuffer()
 
-	// Compute value buffer length
-	// TODO: ensure 32-bit aligned
-	if bufferBytes < len(args)*4 {
-		bufferBytes = len(args) * 4
-	}
+	// Prepare buffer size for arguments
+	bufferBytes = m.ensureBufferSize(bufferBytes, len(args))
 
-	// Write request header
-	m.buf[0] = uint32(len(m.buf)) * 4 // buffer size
-	m.buf[1] = RequestCodeDefault     // request code
-
-	// Write request tag
-	m.buf[2] = tagID
-	m.buf[3] = uint32(bufferBytes) // Value buffer size in bytes
-	m.buf[4] = 0                   // This is a request
-	copy(m.buf[5:], args)          // Write value buffer
-	// TODO: zero remaining buffer and end tag
+	// Write request and tag to buffer
+	m.writeRequestHeader(bufferBytes, tagID, args)
 
 	debugf("TX:\n")
+	m.debugBuffer("  %02d: 0x%08X\n", m.buf[:5+len(args)])
 
-	for i, v := range m.buf[:5+len(args)] {
-		debugf("  %02d: 0x%08X\n", i, v)
-	}
-
-	err := ioctl.Ioctl(m.f.Fd(), uintptr(mbIoctl), uintptr(unsafe.Pointer(&m.buf[0])))
-	if err != nil {
+	// Send request
+	if err := m.sendIOCTL(); err != nil {
 		return nil, fmt.Errorf("unable to send message via ioctl: %w", err)
 	}
 
 	debugf("RX:\n")
+	m.debugBuffer("  %02d: 0x%08X\n", m.buf[:16])
 
-	for i, v := range m.buf[:16] {
-		debugf("  %02d: 0x%08X\n", i, v)
+	// Validate response code
+	if err := m.checkResponse(); err != nil {
+		return nil, err
 	}
 
-	// Check response header
-	if m.buf[1] == replyFail {
-		return nil, ErrRequestBuffer
+	// Parse tags
+	return m.readAllTags()
+}
+
+// alignBuffer ensures the buffer is aligned to a 16-byte boundary.
+func (m *Mailbox) alignBuffer() {
+	if m.buf == nil {
+		offset := uintptr(unsafe.Pointer(&m.bufUnaligned[0])) & 15
+		m.buf = m.bufUnaligned[16-offset : uintptr(len(m.bufUnaligned))-offset]
+	}
+}
+
+// ensureBufferSize sets the buffer size ensuring it can hold all args.
+func (m *Mailbox) ensureBufferSize(bufferBytes, numArgs int) int {
+	if bufferBytes < numArgs*4 {
+		return numArgs * 4
 	}
 
-	if m.buf[1]&replySuccess != replySuccess {
-		return nil, fmt.Errorf("vcio: unexpected response code: 0x%08x", m.buf[1])
+	return bufferBytes
+}
+
+// writeRequestHeader writes the message header and tag into the buffer.
+func (m *Mailbox) writeRequestHeader(bufferBytes int, tagID uint32, args []uint32) {
+	m.buf[0] = uint32(len(m.buf)) * 4 // buffer size
+	m.buf[1] = RequestCodeDefault     // request code
+	m.buf[2] = tagID
+	m.buf[3] = uint32(bufferBytes) // Value buffer size in bytes
+	m.buf[4] = 0                   // This is a request
+	copy(m.buf[5:], args)          // Write value buffer // TODO: zero remaining buffer and end tag
+}
+
+// debugBuffer prints out buffer values for debugging
+func (m *Mailbox) debugBuffer(format string, buf []uint32) {
+	for i, v := range buf {
+		debugf(format, i, v)
+	}
+}
+
+// sendIOCTL sends the buffer via ioctl.
+func (m *Mailbox) sendIOCTL() error {
+	if err := ioctl.Ioctl(m.f.Fd(), uintptr(mbIoctl), uintptr(unsafe.Pointer(&m.buf[0]))); err != nil {
+		return fmt.Errorf("failed to send via ioctl: %w", err)
 	}
 
-	remainingBytesAfterFirstTwoTag := m.buf[2:]
+	return nil
+}
+
+// checkResponse checks for errors in the response header.
+func (m *Mailbox) checkResponse() error {
+	switch {
+	case m.buf[1] == replyFail:
+		return ErrRequestBuffer
+	case m.buf[1]&replySuccess != replySuccess:
+		return fmt.Errorf("vcio: unexpected response code: 0x%08x", m.buf[1])
+	}
+
+	return nil
+}
+
+// readAllTags parses all tags from response buffer.
+func (m *Mailbox) readAllTags() ([]Tag, error) {
+	remaining := m.buf[2:]
 
 	var tags []Tag
 
 	for {
-		readTag, err := ReadTag(remainingBytesAfterFirstTwoTag)
+		tag, err := ReadTag(remaining)
 		if err != nil {
 			return nil, err
 		}
 
-		if readTag.IsEnd() {
+		if tag.IsEnd() {
 			break
 		}
 
-		if tags == nil {
-			tags = make([]Tag, 0, 1)
-		}
-
-		tags = append(tags, readTag)
-
-		remainingBytesAfterFirstTwoTag = remainingBytesAfterFirstTwoTag[len(readTag):]
+		tags = append(tags, tag)
+		remaining = remaining[len(tag):]
 	}
 
 	return tags, nil
