@@ -121,21 +121,21 @@ func (t Tag) IsValid() bool {
 	return true
 }
 
-func ReadTag(b []uint32) (Tag, error) {
-	if len(b) > 0 && b[0] == 0 {
+func ReadTag(tag []uint32) (Tag, error) {
+	if len(tag) > 0 && tag[0] == 0 {
 		return EndTag, nil
 	}
 
-	if len(b) < 3 {
+	if len(tag) < 3 {
 		return nil, fmt.Errorf("vcio: tag buffer is too small")
 	}
 
-	sz := 3 + int(b[1]/4) // TODO: fix unaligned buffer sizes
-	if len(b) < sz {
+	sz := 3 + int(tag[1]/4) // TODO: fix unaligned buffer sizes
+	if len(tag) < sz {
 		return nil, fmt.Errorf("vcio: tag buffer is too small")
 	}
 
-	return Tag(b[:sz]), nil
+	return Tag(tag[:sz]), nil
 }
 
 // Mailbox implements the Mailbox protocol used by the VideoCore and ARM on a Raspberry Pi.
@@ -146,18 +146,17 @@ type Mailbox struct {
 }
 
 func Open() (f *Mailbox, err error) {
-	var ff *os.File
+	var vcioFile *os.File
 
-	ff, err = os.OpenFile("/dev/vcio", os.O_RDONLY, os.ModePerm)
+	vcioFile, err = os.OpenFile("/dev/vcio", os.O_RDONLY, os.ModePerm)
 	if err == os.ErrNotExist {
 		return nil, ErrNotImplemented
 	}
-
 	if err != nil {
 		return nil, err
 	}
 
-	return &Mailbox{f: ff}, nil
+	return &Mailbox{f: vcioFile}, nil
 }
 
 func (c *Mailbox) Close() (err error) {
@@ -224,17 +223,17 @@ func (m *Mailbox) Do(tagID uint32, bufferBytes int, args ...uint32) ([]Tag, erro
 		return nil, fmt.Errorf("vcio: unexpected response code: 0x%08x", m.buf[1])
 	}
 
-	b := m.buf[2:]
+	remainingBytesAfterFirstTwoTag := m.buf[2:]
 
 	var tags []Tag
 
 	for {
-		t, err := ReadTag(b)
+		readTag, err := ReadTag(remainingBytesAfterFirstTwoTag)
 		if err != nil {
 			return nil, err
 		}
 
-		if t.IsEnd() {
+		if readTag.IsEnd() {
 			break
 		}
 
@@ -242,9 +241,9 @@ func (m *Mailbox) Do(tagID uint32, bufferBytes int, args ...uint32) ([]Tag, erro
 			tags = make([]Tag, 0, 1)
 		}
 
-		tags = append(tags, t)
+		tags = append(tags, readTag)
 
-		b = b[len(t):]
+		remainingBytesAfterFirstTwoTag = remainingBytesAfterFirstTwoTag[len(readTag):]
 	}
 
 	return tags, nil

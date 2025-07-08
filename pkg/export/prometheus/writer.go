@@ -110,12 +110,12 @@ func (w *expWriter) writeSample(val interface{}, labels ...string) {
 }
 
 func (w *expWriter) write() error {
-	m, err := mbox.Open()
+	mboxOpen, err := mbox.Open()
 	if err != nil {
 		return err
 	}
 
-	defer m.Close()
+	defer mboxOpen.Close()
 
 	/*
 	 * NB: As a convention, write headers before retrieving values so the output will indicate where
@@ -127,7 +127,7 @@ func (w *expWriter) write() error {
 	 */
 	w.writeHeader("rpi_vc_revision", "Firmware revision of the VideoCore device.", metricTypeGauge)
 
-	rev, err := m.GetFirmwareRevision()
+	rev, err := mboxOpen.GetFirmwareRevision()
 	if err != nil {
 		return err
 	}
@@ -136,7 +136,7 @@ func (w *expWriter) write() error {
 
 	w.writeHeader("rpi_board_model", "Board model.", metricTypeGauge)
 
-	model, err := m.GetBoardModel()
+	model, err := mboxOpen.GetBoardModel()
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,7 @@ func (w *expWriter) write() error {
 
 	w.writeHeader("rpi_board_revision", "Board revision.", metricTypeGauge)
 
-	rev, err = m.GetBoardRevision()
+	rev, err = mboxOpen.GetBoardRevision()
 	if err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func (w *expWriter) write() error {
 	)
 
 	for id, label := range powerLabelsByID {
-		powerState, err := m.GetPowerState(id)
+		powerState, err := mboxOpen.GetPowerState(id)
 		if err != nil {
 			return err
 		}
@@ -177,7 +177,7 @@ func (w *expWriter) write() error {
 	w.writeHeader("rpi_clock_rate_hz", "Clock rate in Hertz.", metricTypeGauge, "id")
 
 	for id, label := range clockLabelsByID {
-		clockRate, err := m.GetClockRate(id)
+		clockRate, err := mboxOpen.GetClockRate(id)
 		if err != nil {
 			return err
 		}
@@ -188,7 +188,7 @@ func (w *expWriter) write() error {
 	w.writeHeader("rpi_clock_rate_measured_hz", "Measured clock rate in Hertz.", metricTypeGauge, "id")
 
 	for id, label := range clockLabelsByID {
-		clockRate, err := m.GetClockRateMeasured(id)
+		clockRate, err := mboxOpen.GetClockRateMeasured(id)
 		if err != nil {
 			return err
 		}
@@ -198,7 +198,7 @@ func (w *expWriter) write() error {
 
 	w.writeHeader("rpi_turbo", "Turbo state.", metricTypeGauge)
 
-	turbo, err := m.GetTurbo()
+	turbo, err := mboxOpen.GetTurbo()
 	if err != nil {
 		return err
 	}
@@ -217,7 +217,7 @@ func (w *expWriter) write() error {
 		"id",
 	)
 
-	temp, err := m.GetTemperature()
+	temp, err := mboxOpen.GetTemperature()
 	if err != nil {
 		return err
 	}
@@ -239,7 +239,7 @@ func (w *expWriter) write() error {
 		"id",
 	)
 
-	maxTemp, err := m.GetMaxTemperature()
+	maxTemp, err := mboxOpen.GetMaxTemperature()
 	if err != nil {
 		return err
 	}
@@ -261,7 +261,7 @@ func (w *expWriter) write() error {
 	w.writeHeader("rpi_voltage", "Current component voltage.", metricTypeGauge, "id")
 
 	for id, label := range voltageLabelsByID {
-		volts, err := m.GetVoltage(id)
+		volts, err := mboxOpen.GetVoltage(id)
 		if err != nil {
 			return err
 		}
@@ -272,7 +272,7 @@ func (w *expWriter) write() error {
 	w.writeHeader("rpi_voltage_min", "Minimum supported component voltage.", metricTypeGauge, "id")
 
 	for id, label := range voltageLabelsByID {
-		volts, err := m.GetMinVoltage(id)
+		volts, err := mboxOpen.GetMinVoltage(id)
 		if err != nil {
 			return err
 		}
@@ -283,7 +283,7 @@ func (w *expWriter) write() error {
 	w.writeHeader("rpi_voltage_max", "Maximum supported component voltage.", metricTypeGauge, "id")
 
 	for id, label := range voltageLabelsByID {
-		volts, err := m.GetMaxVoltage(id)
+		volts, err := mboxOpen.GetMaxVoltage(id)
 		if err != nil {
 			return err
 		}
