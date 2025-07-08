@@ -1,5 +1,5 @@
 /*
-Package mbox implements the Mailbox protocol used to communicate between the the VideoCore GPU and
+Package mbox implements the Mailbox protocol used to communicate between the VideoCore GPU and
 ARM processor on a Raspberry Pi.
 
 https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface
