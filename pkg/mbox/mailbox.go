@@ -15,7 +15,7 @@ import (
 	"os"
 	"unsafe"
 
-	"github.com/cavaliercoder/rpi_export/pkg/ioctl"
+	"github.com/schubergphilis/rpi_exporter/pkg/ioctl"
 )
 
 const (
@@ -104,16 +104,20 @@ func (t Tag) IsValid() bool {
 	if len(t) == 0 {
 		return false // Nil or empty
 	}
+
 	if len(t) == 1 {
 		return t.IsEnd() // End tag
 	}
+
 	if len(t) < 3 {
 		return false // Too short
 	}
+
 	if len(t) != int(3+t[1]/4) {
 		// Incorrect size with value buffer
 		return false
 	}
+
 	return true
 }
 
@@ -121,13 +125,16 @@ func ReadTag(b []uint32) (Tag, error) {
 	if len(b) > 0 && b[0] == 0 {
 		return EndTag, nil
 	}
+
 	if len(b) < 3 {
 		return nil, fmt.Errorf("vcio: tag buffer is too small")
 	}
+
 	sz := 3 + int(b[1]/4) // TODO: fix unaligned buffer sizes
 	if len(b) < sz {
 		return nil, fmt.Errorf("vcio: tag buffer is too small")
 	}
+
 	return Tag(b[:sz]), nil
 }
 
@@ -140,13 +147,16 @@ type Mailbox struct {
 
 func Open() (f *Mailbox, err error) {
 	var ff *os.File
+
 	ff, err = os.OpenFile("/dev/vcio", os.O_RDONLY, os.ModePerm)
 	if err == os.ErrNotExist {
 		return nil, ErrNotImplemented
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	return &Mailbox{f: ff}, nil
 }
 
@@ -154,8 +164,10 @@ func (c *Mailbox) Close() (err error) {
 	if c == nil || c.f == nil {
 		return nil
 	}
+
 	err = c.f.Close()
 	c.f = nil
+
 	return
 }
 
@@ -186,6 +198,7 @@ func (m *Mailbox) Do(tagID uint32, bufferBytes int, args ...uint32) ([]Tag, erro
 	// TODO: zero remaining buffer and end tag
 
 	debugf("TX:\n")
+
 	for i, v := range m.buf[:5+len(args)] {
 		debugf("  %02d: 0x%08X\n", i, v)
 	}
@@ -197,6 +210,7 @@ func (m *Mailbox) Do(tagID uint32, bufferBytes int, args ...uint32) ([]Tag, erro
 	}
 
 	debugf("RX:\n")
+
 	for i, v := range m.buf[:16] {
 		debugf("  %02d: 0x%08X\n", i, v)
 	}
@@ -205,24 +219,31 @@ func (m *Mailbox) Do(tagID uint32, bufferBytes int, args ...uint32) ([]Tag, erro
 	if m.buf[1] == replyFail {
 		return nil, ErrRequestBuffer
 	}
+
 	if m.buf[1]&replySuccess != replySuccess {
 		return nil, fmt.Errorf("vcio: unexpected response code: 0x%08x", m.buf[1])
 	}
 
 	b := m.buf[2:]
+
 	var tags []Tag
+
 	for {
 		t, err := ReadTag(b)
 		if err != nil {
 			return nil, err
 		}
+
 		if t.IsEnd() {
 			break
 		}
+
 		if tags == nil {
 			tags = make([]Tag, 0, 1)
 		}
+
 		tags = append(tags, t)
+
 		b = b[len(t):]
 	}
 
@@ -252,6 +273,7 @@ func debugf(format string, a ...interface{}) {
 	if !Debug {
 		return
 	}
+
 	fmt.Fprintf(os.Stderr, format, a...)
 }
 
@@ -396,5 +418,4 @@ func (m *Mailbox) GetTurbo() (bool, error) {
 		return false, err
 	}
 	return tags[0].Value()[1] == 1, nil
-
 }

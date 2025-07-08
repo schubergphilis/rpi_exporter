@@ -17,6 +17,7 @@ var (
 
 func main() {
 	flag.Parse()
+
 	mbox.Debug = *flagDebug
 
 	if *flagAddr != "" {

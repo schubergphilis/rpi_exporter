@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cavaliercoder/rpi_export/pkg/mbox"
+	"github.com/schubergphilis/rpi_exporter/pkg/mbox"
 )
 
 const (
@@ -89,17 +89,23 @@ func (w *expWriter) writeSample(val interface{}, labels ...string) {
 	if len(labels) != len(w.labels) {
 		panic("developer error: incorrect metrics label count")
 	}
+
 	fmt.Fprintf(w.w, w.name)
+
 	if len(w.labels) > 0 {
 		fmt.Fprintf(w.w, "{")
+
 		for i, key := range w.labels {
 			if i > 0 {
 				fmt.Fprintf(w.w, ",")
 			}
+
 			fmt.Fprintf(w.w, "%s=\"%s\"", key, labels[i])
 		}
+
 		fmt.Fprintf(w.w, "}")
 	}
+
 	fmt.Fprintf(w.w, " %v\n", val)
 }
 
@@ -108,6 +114,7 @@ func (w *expWriter) write() error {
 	if err != nil {
 		return err
 	}
+
 	defer m.Close()
 
 	/*
@@ -119,24 +126,30 @@ func (w *expWriter) write() error {
 	 * Hardware.
 	 */
 	w.writeHeader("rpi_vc_revision", "Firmware revision of the VideoCore device.", metricTypeGauge)
+
 	rev, err := m.GetFirmwareRevision()
 	if err != nil {
 		return err
 	}
+
 	w.writeSample(rev)
 
 	w.writeHeader("rpi_board_model", "Board model.", metricTypeGauge)
+
 	model, err := m.GetBoardModel()
 	if err != nil {
 		return err
 	}
+
 	w.writeSample(model)
 
 	w.writeHeader("rpi_board_revision", "Board revision.", metricTypeGauge)
+
 	rev, err = m.GetBoardRevision()
 	if err != nil {
 		return err
 	}
+
 	w.writeSample(rev)
 
 	/*
@@ -148,11 +161,13 @@ func (w *expWriter) write() error {
 		metricTypeGauge,
 		"id",
 	)
+
 	for id, label := range powerLabelsByID {
 		powerState, err := m.GetPowerState(id)
 		if err != nil {
 			return err
 		}
+
 		w.writeSample(powerState, label)
 	}
 
@@ -160,28 +175,34 @@ func (w *expWriter) write() error {
 	 * Clocks.
 	 */
 	w.writeHeader("rpi_clock_rate_hz", "Clock rate in Hertz.", metricTypeGauge, "id")
+
 	for id, label := range clockLabelsByID {
 		clockRate, err := m.GetClockRate(id)
 		if err != nil {
 			return err
 		}
+
 		w.writeSample(clockRate, label)
 	}
 
 	w.writeHeader("rpi_clock_rate_measured_hz", "Measured clock rate in Hertz.", metricTypeGauge, "id")
+
 	for id, label := range clockLabelsByID {
 		clockRate, err := m.GetClockRateMeasured(id)
 		if err != nil {
 			return err
 		}
+
 		w.writeSample(clockRate, label)
 	}
 
 	w.writeHeader("rpi_turbo", "Turbo state.", metricTypeGauge)
+
 	turbo, err := m.GetTurbo()
 	if err != nil {
 		return err
 	}
+
 	w.writeSample(formatBool(turbo))
 
 	/*
@@ -195,10 +216,12 @@ func (w *expWriter) write() error {
 		metricTypeGauge,
 		"id",
 	)
+
 	temp, err := m.GetTemperature()
 	if err != nil {
 		return err
 	}
+
 	w.writeSample(formatTemp(temp), "soc")
 	w.writeHeader(
 		"rpi_temperature_f",
@@ -215,10 +238,12 @@ func (w *expWriter) write() error {
 		metricTypeGauge,
 		"id",
 	)
+
 	maxTemp, err := m.GetMaxTemperature()
 	if err != nil {
 		return err
 	}
+
 	w.writeSample(formatTemp(maxTemp), "soc")
 	w.writeHeader(
 		"rpi_max_temperature_f",
@@ -234,28 +259,37 @@ func (w *expWriter) write() error {
 
 	// Current voltages.
 	w.writeHeader("rpi_voltage", "Current component voltage.", metricTypeGauge, "id")
+
 	for id, label := range voltageLabelsByID {
 		volts, err := m.GetVoltage(id)
 		if err != nil {
 			return err
 		}
+
 		w.writeSample(formatVolts(volts), label)
 	}
+
 	w.writeHeader("rpi_voltage_min", "Minimum supported component voltage.", metricTypeGauge, "id")
+
 	for id, label := range voltageLabelsByID {
 		volts, err := m.GetMinVoltage(id)
 		if err != nil {
 			return err
 		}
+
 		w.writeSample(formatVolts(volts), label)
 	}
+
 	w.writeHeader("rpi_voltage_max", "Maximum supported component voltage.", metricTypeGauge, "id")
+
 	for id, label := range voltageLabelsByID {
 		volts, err := m.GetMaxVoltage(id)
 		if err != nil {
 			return err
 		}
+
 		w.writeSample(formatVolts(volts), label)
 	}
+
 	return nil
 }
