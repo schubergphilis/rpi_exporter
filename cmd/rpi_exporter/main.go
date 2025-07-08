@@ -28,7 +28,9 @@ func main() {
 			}
 		}))
 		log.Printf("Listening on %s", *flagAddr)
-		http.ListenAndServe(*flagAddr, nil)
+		if err := http.ListenAndServe(*flagAddr, nil); err != nil {
+			log.WithError(err).Fatal("unable to listen and server http")
+		}
 
 		return
 	}
