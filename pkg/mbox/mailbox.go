@@ -1,8 +1,14 @@
+/*
+Package mbox implements the Mailbox protocol used to communicate between the VideoCore GPU and
+ARM processor on a Raspberry Pi.
+https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface
+*/
 package mbox
 
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"unsafe"
 
@@ -189,8 +195,11 @@ func (m *Mailbox) Close() {
 // the next request is made.
 func (m *Mailbox) Do(tagID uint32, bufferBytes int, args ...uint32) ([]Tag, error) {
 	m.alignBuffer()
+
 	bufferBytes = m.ensureBufferSize(bufferBytes, len(args))
-	m.writeRequestHeader(bufferBytes, tagID, args)
+	if err := m.writeRequestHeader(bufferBytes, tagID, args); err != nil {
+		return nil, fmt.Errorf("unable to write request header: %w", err)
+	}
 
 	debugf("TX:\n")
 	m.debugBuffer("  %02d: 0x%08X\n", m.buf[:MailboxRequestHeaderWords+len(args)])
@@ -364,14 +373,27 @@ func (m *Mailbox) ensureBufferSize(bufferBytes, numArgs int) int {
 	return bufferBytes
 }
 
-// writeRequestHeader writes the message header and tag into the buffer.
-func (m *Mailbox) writeRequestHeader(bufferBytes int, tagID uint32, args []uint32) {
-	m.buf[0] = uint32(len(m.buf)) * MailboxWordBytes
+// writeRequestHeader writes the message header and tag into the buffer with overflow safety.
+func (m *Mailbox) writeRequestHeader(bufferBytes int, tagID uint32, args []uint32) error {
+	bufLen := len(m.buf)
+
+	computedLen := bufLen * MailboxWordBytes
+	if bufLen < 0 || computedLen < 0 || computedLen > int(math.MaxUint32) {
+		return fmt.Errorf("mailbox header length out of range: %d", computedLen)
+	}
+
+	if bufferBytes < 0 || bufferBytes > int(math.MaxUint32) {
+		return fmt.Errorf("mailbox bufferBytes out of range: %d", bufferBytes)
+	}
+
+	m.buf[0] = uint32(computedLen)
 	m.buf[1] = RequestCodeDefault
 	m.buf[2] = tagID
 	m.buf[3] = uint32(bufferBytes)
 	m.buf[4] = 0 // request
 	copy(m.buf[MailboxRequestHeaderWords:], args)
+
+	return nil
 }
 
 // debugBuffer prints out buffer values for debugging.
