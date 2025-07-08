@@ -16,6 +16,7 @@ import (
 	"unsafe"
 
 	"github.com/schubergphilis/rpi_exporter/pkg/ioctl"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -145,10 +146,10 @@ type Mailbox struct {
 	buf          []uint32
 }
 
-func Open() (f *Mailbox, err error) {
+func Open() (*Mailbox, error) {
 	var vcioFile *os.File
 
-	vcioFile, err = os.OpenFile("/dev/vcio", os.O_RDONLY, os.ModePerm)
+	vcioFile, err := os.OpenFile("/dev/vcio", os.O_RDONLY, os.ModePerm)
 	if err == os.ErrNotExist {
 		return nil, ErrNotImplemented
 	}
@@ -160,15 +161,16 @@ func Open() (f *Mailbox, err error) {
 	return &Mailbox{f: vcioFile}, nil
 }
 
-func (m *Mailbox) Close() (err error) {
+func (m *Mailbox) Close() {
 	if m == nil || m.f == nil {
-		return nil
+		return
 	}
 
-	err = m.f.Close()
-	m.f = nil
+	if err := m.f.Close(); err != nil {
+		log.WithError(err).Error("unable to close mail box")
+	}
 
-	return
+	m.f = nil
 }
 
 // Do sends a single command tag and returns all response tags. Returned memory is only usable until
@@ -254,6 +256,7 @@ func (m *Mailbox) getUint32(tagID uint32) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	// TODO: bounds check
 	return tags[0].Value()[0], nil
 }
@@ -263,6 +266,7 @@ func (m *Mailbox) getUint32ByID(tagID, id uint32) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	// TODO: check response ID matches
 	// TODO: bounds check
 	return tags[0].Value()[1], nil
@@ -321,6 +325,7 @@ func (m *Mailbox) GetPowerState(id PowerDeviceID) (PowerState, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	return PowerState(tags[0].Value()[1] & 0x03), nil
 }
 
@@ -343,19 +348,21 @@ const (
 	ClockIDPixelBVB ClockID = 0x00000000e
 )
 
-func (m *Mailbox) GetClockRate(id ClockID) (hz int, err error) {
+func (m *Mailbox) GetClockRate(id ClockID) (int, error) {
 	v, err := m.getUint32ByID(TagGetClockRate, uint32(id))
 	if err != nil {
 		return 0, err
 	}
+
 	return int(v), nil
 }
 
-func (m *Mailbox) GetClockRateMeasured(id ClockID) (hz int, err error) {
+func (m *Mailbox) GetClockRateMeasured(id ClockID) (int, error) {
 	v, err := m.getUint32ByID(TagGetClockRateMeasured, uint32(id))
 	if err != nil {
 		return 0, err
 	}
+
 	return int(v), nil
 }
 
@@ -364,6 +371,7 @@ func (m *Mailbox) getTemperature(tag uint32) (float32, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	return float32(v) / 1000, nil
 }
 
@@ -393,6 +401,7 @@ func (m *Mailbox) getVoltage(tag uint32, id VoltageID) (float32, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	return float32(v) / 1000000, nil
 }
 
@@ -416,5 +425,6 @@ func (m *Mailbox) GetTurbo() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
 	return tags[0].Value()[1] == 1, nil
 }
