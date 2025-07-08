@@ -1,46 +1,65 @@
 /*
-Package mbox implements the Mailbox protocol used to communicate between the the VideoCore GPU and
+Package mbox implements the Mailbox protocol used to communicate between the VideoCore GPU and
 ARM processor on a Raspberry Pi.
-
 https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface
-
-TODO: Thread safety
-TODO: Account for different channels. Maybe in constructor?
 */
 package mbox
 
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"unsafe"
 
-	"github.com/cavaliercoder/rpi_export/pkg/ioctl"
+	"github.com/schubergphilis/rpi_exporter/pkg/ioctl"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
-	RequestCodeDefault uint32 = 0x00000000
+	RequestCodeDefault        = 0x00000000
+	MailboxBufferAlignment    = 16
+	MailboxDefaultBufferWords = 48
+	MailboxWordBytes          = 4
+	MailboxHeaderWords        = 2 // m.buf[0] and m.buf[1]: size and code
+	MailboxTagFields          = 3 // id, valueBufSize, request/resp code
+	MailboxRequestHeaderWords = 5 // size, code, tag id, valueBufSize, request/resp
+	MailboxRequestHeaderBytes = MailboxRequestHeaderWords * MailboxWordBytes
+	MailboxDebugPrintWordsTX  = 5  // header + tag
+	MailboxDebugPrintWordsRX  = 16 // for debug dump (arbitrary, safe for most responses)
+	MailboxEndTagValue        = 0
+	MailboxEndTagWords        = 1
+	MailboxMinCompleteTagLen  = 3 // id, valuebufsize, len/resp field
+	PowerStateReturnIdx       = 1
+	ClockRateReturnIdx        = 1
+	GetUint32ReturnIdx        = 0
+	PowerStateMask            = 0x03
+	MailboxResponseLenMask    = 0x7FFFFFFF
+	MailboxResponseSuccessBit = 0x80000000
+	MailboxMilliScale         = 1000
+	MailboxMicroScale         = 1000000
+	MailboxTwoWords           = 2
 )
 
 const (
-	TagGetFirmwareRevision  uint32 = 0x00000001
-	TagGetBoardModel        uint32 = 0x00010001
-	TagGetBoardRevision     uint32 = 0x00010002
-	TagGetBoardMAC          uint32 = 0x00010003
-	TagGetPowerState        uint32 = 0x00020001
-	TagGetClockRate         uint32 = 0x00030002
-	TagGetVoltage           uint32 = 0x00030003
-	TagGetMaxVoltage        uint32 = 0x00030005
-	TagGetTemperature       uint32 = 0x00030006
-	TagGetMinVoltage        uint32 = 0x00030008
-	TagGetTurbo             uint32 = 0x00030009
-	TagGetMaxTemperature    uint32 = 0x0003000A
-	TagGetClockRateMeasured uint32 = 0x00030047
+	TagGetFirmwareRevision  = 0x00000001
+	TagGetBoardModel        = 0x00010001
+	TagGetBoardRevision     = 0x00010002
+	TagGetBoardMAC          = 0x00010003
+	TagGetPowerState        = 0x00020001
+	TagGetClockRate         = 0x00030002
+	TagGetVoltage           = 0x00030003
+	TagGetMaxVoltage        = 0x00030005
+	TagGetTemperature       = 0x00030006
+	TagGetMinVoltage        = 0x00030008
+	TagGetTurbo             = 0x00030009
+	TagGetMaxTemperature    = 0x0003000A
+	TagGetClockRateMeasured = 0x00030047
 )
 
 const (
-	replySuccess uint32 = 0x80000000
-	replyFail    uint32 = 0x80000001
+	replySuccess = 0x80000000
+	replyFail    = 0x80000001
 )
 
 var Debug = false
@@ -54,12 +73,13 @@ var mbIoctl = ioctl.IOWR('d', 0, uint(unsafe.Sizeof(new(byte))))
 
 type Tag []uint32
 
-var EndTag = Tag{0}
+var EndTag = Tag{MailboxEndTagValue}
 
 func (t Tag) ID() uint32 {
 	if !t.IsValid() {
 		return 0
 	}
+
 	return t[0]
 }
 
@@ -68,26 +88,25 @@ func (t Tag) Cap() int {
 	if !t.IsValid() {
 		return 0
 	}
+
 	return int(t[1])
 }
 
-// Len is the length of a response value in bytes. The actual bytes written by a response will be
-// the lesser of Len and Cap. If Len is greater than Cap, retry the request with a bigger value
-// buffer.
-//
-// To get the length of the entire tag in uint32s, including headers, use len(Tag).
+// Len returns the length of a response value in bytes.
 func (t Tag) Len() int {
 	if !t.IsValid() || !t.IsResponse() {
 		return 0
 	}
-	return int(t[2] & 0x7FFFFFFF)
+
+	return int(t[2] & MailboxResponseLenMask)
 }
 
 func (t Tag) IsResponse() bool {
 	if !t.IsValid() {
 		return false
 	}
-	return t[2]&0x80000000 == 0x80000000
+
+	return t[2]&MailboxResponseSuccessBit == MailboxResponseSuccessBit
 }
 
 // Value returns the value buffer. TODO: Always 32bit.
@@ -95,164 +114,108 @@ func (t Tag) Value() []uint32 {
 	if !t.IsValid() {
 		return nil
 	}
-	return t[3 : 3+t.Len()/4]
+
+	return t[3 : 3+t.Len()/MailboxWordBytes]
 }
 
-func (t Tag) IsEnd() bool { return len(t) == 1 && t[0] == 0 }
+func (t Tag) IsEnd() bool {
+	return len(t) == MailboxEndTagWords && t[0] == MailboxEndTagValue
+}
 
 func (t Tag) IsValid() bool {
 	if len(t) == 0 {
 		return false // Nil or empty
 	}
-	if len(t) == 1 {
+
+	if len(t) == MailboxEndTagWords {
 		return t.IsEnd() // End tag
 	}
-	if len(t) < 3 {
+
+	if len(t) < MailboxMinCompleteTagLen {
 		return false // Too short
 	}
-	if len(t) != int(3+t[1]/4) {
-		// Incorrect size with value buffer
-		return false
+
+	if len(t) != int(MailboxMinCompleteTagLen+t[1]/MailboxWordBytes) {
+		return false // Incorrect size with value buffer
 	}
+
 	return true
 }
 
-func ReadTag(b []uint32) (Tag, error) {
-	if len(b) > 0 && b[0] == 0 {
+func ReadTag(tag []uint32) (Tag, error) {
+	if len(tag) > 0 && tag[0] == MailboxEndTagValue {
 		return EndTag, nil
 	}
-	if len(b) < 3 {
-		return nil, fmt.Errorf("vcio: tag buffer is too small")
+
+	if len(tag) < MailboxMinCompleteTagLen {
+		return nil, errors.New("vcio: tag buffer is too small")
 	}
-	sz := 3 + int(b[1]/4) // TODO: fix unaligned buffer sizes
-	if len(b) < sz {
-		return nil, fmt.Errorf("vcio: tag buffer is too small")
+
+	sz := MailboxMinCompleteTagLen + int(tag[1]/MailboxWordBytes)
+	if len(tag) < sz {
+		return nil, errors.New("vcio: tag buffer is too small")
 	}
-	return Tag(b[:sz]), nil
+
+	return Tag(tag[:sz]), nil
 }
 
 // Mailbox implements the Mailbox protocol used by the VideoCore and ARM on a Raspberry Pi.
 type Mailbox struct {
 	f            *os.File
-	bufUnaligned [48]uint32
+	bufUnaligned [MailboxDefaultBufferWords]uint32
 	buf          []uint32
 }
 
-func Open() (f *Mailbox, err error) {
-	var ff *os.File
-	ff, err = os.OpenFile("/dev/vcio", os.O_RDONLY, os.ModePerm)
-	if err == os.ErrNotExist {
+func Open() (*Mailbox, error) {
+	vcioFile, err := os.OpenFile("/dev/vcio", os.O_RDONLY, os.ModePerm)
+	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNotImplemented
 	}
+
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to open vcioFile: %w", err)
 	}
-	return &Mailbox{f: ff}, nil
+
+	return &Mailbox{f: vcioFile}, nil
 }
 
-func (c *Mailbox) Close() (err error) {
-	if c == nil || c.f == nil {
-		return nil
+func (m *Mailbox) Close() {
+	if m == nil || m.f == nil {
+		return
 	}
-	err = c.f.Close()
-	c.f = nil
-	return
+
+	if err := m.f.Close(); err != nil {
+		log.WithError(err).Error("unable to close mail box")
+	}
+
+	m.f = nil
 }
 
 // Do sends a single command tag and returns all response tags. Returned memory is only usable until
 // the next request is made.
 func (m *Mailbox) Do(tagID uint32, bufferBytes int, args ...uint32) ([]Tag, error) {
-	// Align buffer to 16-byte boundary
-	if m.buf == nil {
-		offset := uintptr(unsafe.Pointer(&m.bufUnaligned[0])) & 15
-		m.buf = m.bufUnaligned[16-offset : uintptr(len(m.bufUnaligned))-offset]
+	m.alignBuffer()
+
+	bufferBytes = m.ensureBufferSize(bufferBytes, len(args))
+	if err := m.writeRequestHeader(bufferBytes, tagID, args); err != nil {
+		return nil, fmt.Errorf("unable to write request header: %w", err)
 	}
-
-	// Compute value buffer length
-	// TODO: ensure 32-bit aligned
-	if bufferBytes < len(args)*4 {
-		bufferBytes = len(args) * 4
-	}
-
-	// Write request header
-	m.buf[0] = uint32(len(m.buf)) * 4 // buffer size
-	m.buf[1] = RequestCodeDefault     // request code
-
-	// Write request tag
-	m.buf[2] = tagID
-	m.buf[3] = uint32(bufferBytes) // Value buffer size in bytes
-	m.buf[4] = 0                   // This is a request
-	copy(m.buf[5:], args)          // Write value buffer
-	// TODO: zero remaining buffer and end tag
 
 	debugf("TX:\n")
-	for i, v := range m.buf[:5+len(args)] {
-		debugf("  %02d: 0x%08X\n", i, v)
-	}
+	m.debugBuffer("  %02d: 0x%08X\n", m.buf[:MailboxRequestHeaderWords+len(args)])
 
-	// Send message via ioctl
-	err := ioctl.Ioctl(m.f.Fd(), uintptr(mbIoctl), uintptr(unsafe.Pointer(&m.buf[0])))
-	if err != nil {
-		return nil, err
+	if err := m.sendIOCTL(); err != nil {
+		return nil, fmt.Errorf("unable to send message via ioctl: %w", err)
 	}
 
 	debugf("RX:\n")
-	for i, v := range m.buf[:16] {
-		debugf("  %02d: 0x%08X\n", i, v)
+	m.debugBuffer("  %02d: 0x%08X\n", m.buf[:MailboxDebugPrintWordsRX])
+
+	if err := m.checkResponse(); err != nil {
+		return nil, err
 	}
 
-	// Check response header
-	if m.buf[1] == replyFail {
-		return nil, ErrRequestBuffer
-	}
-	if m.buf[1]&replySuccess != replySuccess {
-		return nil, fmt.Errorf("vcio: unexpected response code: 0x%08x", m.buf[1])
-	}
-
-	b := m.buf[2:]
-	var tags []Tag
-	for {
-		t, err := ReadTag(b)
-		if err != nil {
-			return nil, err
-		}
-		if t.IsEnd() {
-			break
-		}
-		if tags == nil {
-			tags = make([]Tag, 0, 1)
-		}
-		tags = append(tags, t)
-		b = b[len(t):]
-	}
-
-	return tags, nil
-}
-
-func (m *Mailbox) getUint32(tagID uint32) (uint32, error) {
-	tags, err := m.Do(tagID, 4)
-	if err != nil {
-		return 0, err
-	}
-	// TODO: bounds check
-	return tags[0].Value()[0], nil
-}
-
-func (m *Mailbox) getUint32ByID(tagID, id uint32) (uint32, error) {
-	tags, err := m.Do(tagID, 8, id)
-	if err != nil {
-		return 0, err
-	}
-	// TODO: check response ID matches
-	// TODO: bounds check
-	return tags[0].Value()[1], nil
-}
-
-func debugf(format string, a ...interface{}) {
-	if !Debug {
-		return
-	}
-	fmt.Fprintf(os.Stderr, format, a...)
+	return m.readAllTags()
 }
 
 // GetFirmwareRevision returns the firmware revision of the VideoCore component.
@@ -270,6 +233,7 @@ func (m *Mailbox) GetBoardRevision() (uint32, error) {
 	return m.getUint32(TagGetBoardRevision)
 }
 
+// PowerDeviceID identifiers.
 type PowerDeviceID uint32
 
 const (
@@ -282,9 +246,7 @@ const (
 	PowerDeviceIDI2C2   PowerDeviceID = 0x00000006
 	PowerDeviceIDSPI    PowerDeviceID = 0x00000007
 	PowerDeviceIDCCP2TX PowerDeviceID = 0x00000008
-
-// PowerDeviceIDUnknown (RPi4) PowerDeviceID = 0x00000009
-// PowerDeviceIDUnknown (RPi4) PowerDeviceID = 0x0000000a
+	// PowerDeviceIDUnknown (RPi4) PowerDeviceID = 0x00000009, 0x0000000a.
 )
 
 type PowerState uint32
@@ -296,91 +258,82 @@ const (
 )
 
 func (m *Mailbox) GetPowerState(id PowerDeviceID) (PowerState, error) {
-	tags, err := m.Do(TagGetPowerState, 8, uint32(id))
+	tags, err := m.Do(
+		TagGetPowerState,
+		MailboxTwoWords*MailboxWordBytes, uint32(id),
+	)
 	if err != nil {
 		return 0, err
 	}
-	return PowerState(tags[0].Value()[1] & 0x03), nil
+
+	return PowerState(tags[0].Value()[PowerStateReturnIdx] & PowerStateMask), nil
 }
 
+// ClockID identifies a clock.
 type ClockID uint32
 
 const (
-	ClockIDEMMC     ClockID = 0x000000001
-	ClockIDUART     ClockID = 0x000000002
-	ClockIDARM      ClockID = 0x000000003
-	ClockIDCore     ClockID = 0x000000004
-	ClockIDV3D      ClockID = 0x000000005
-	ClockIDH264     ClockID = 0x000000006
-	ClockIDISP      ClockID = 0x000000007
-	ClockIDSDRAM    ClockID = 0x000000008
-	ClockIDPixel    ClockID = 0x000000009
-	ClockIDPWM      ClockID = 0x00000000a
-	ClockIDHEVC     ClockID = 0x00000000b
-	ClockIDEMMC2    ClockID = 0x00000000c
-	ClockIDM2MC     ClockID = 0x00000000d
-	ClockIDPixelBVB ClockID = 0x00000000e
+	ClockIDEMMC     ClockID = 0x00000001
+	ClockIDUART     ClockID = 0x00000002
+	ClockIDARM      ClockID = 0x00000003
+	ClockIDCore     ClockID = 0x00000004
+	ClockIDV3D      ClockID = 0x00000005
+	ClockIDH264     ClockID = 0x00000006
+	ClockIDISP      ClockID = 0x00000007
+	ClockIDSDRAM    ClockID = 0x00000008
+	ClockIDPixel    ClockID = 0x00000009
+	ClockIDPWM      ClockID = 0x0000000a
+	ClockIDHEVC     ClockID = 0x0000000b
+	ClockIDEMMC2    ClockID = 0x0000000c
+	ClockIDM2MC     ClockID = 0x0000000d
+	ClockIDPixelBVB ClockID = 0x0000000e
 )
 
-func (m *Mailbox) GetClockRate(id ClockID) (hz int, err error) {
+func (m *Mailbox) GetClockRate(id ClockID) (int, error) {
 	v, err := m.getUint32ByID(TagGetClockRate, uint32(id))
 	if err != nil {
 		return 0, err
 	}
+
 	return int(v), nil
 }
 
-func (m *Mailbox) GetClockRateMeasured(id ClockID) (hz int, err error) {
+func (m *Mailbox) GetClockRateMeasured(id ClockID) (int, error) {
 	v, err := m.getUint32ByID(TagGetClockRateMeasured, uint32(id))
 	if err != nil {
 		return 0, err
 	}
+
 	return int(v), nil
 }
 
-func (m *Mailbox) getTemperature(tag uint32) (float32, error) {
-	v, err := m.getUint32ByID(tag, 0)
-	if err != nil {
-		return 0, err
-	}
-	return float32(v) / 1000, nil
-}
-
-// GetTemperature returns the temperature of the SoC in degrees celcius.
+// GetTemperature returns the temperature of the SoC in degrees celsius.
 func (m *Mailbox) GetTemperature() (float32, error) {
 	return m.getTemperature(TagGetTemperature)
 }
 
-// GetMaxTemperature returns the maximum safe temperature of the SoC in degrees celcius.
-//
+// GetMaxTemperature returns the maximum safe temperature of the SoC in degrees celsius.
 // Overclock may be disabled above this temperature.
 func (m *Mailbox) GetMaxTemperature() (float32, error) {
 	return m.getTemperature(TagGetMaxTemperature)
 }
 
+// VoltageID identifies a voltage rail.
 type VoltageID uint32
 
 const (
-	VoltageIDCore   VoltageID = 0x000000001
-	VoltageIDSDRAMC VoltageID = 0x000000002
-	VoltageIDSDRAMP VoltageID = 0x000000003
-	VoltageIDSDRAMI VoltageID = 0x000000004
+	VoltageIDCore   VoltageID = 0x00000001
+	VoltageIDSDRAMC VoltageID = 0x00000002
+	VoltageIDSDRAMP VoltageID = 0x00000003
+	VoltageIDSDRAMI VoltageID = 0x00000004
 )
-
-func (m *Mailbox) getVoltage(tag uint32, id VoltageID) (float32, error) {
-	v, err := m.getUint32ByID(tag, uint32(id))
-	if err != nil {
-		return 0, err
-	}
-	return float32(v) / 1000000, nil
-}
 
 // GetVoltage returns the voltage of the given component.
 func (m *Mailbox) GetVoltage(id VoltageID) (float32, error) {
 	return m.getVoltage(TagGetVoltage, id)
 }
 
-// GetMaxVoltage returns the minimum supported voltage of the given component.
+// GetMinVoltage returns the minimum supported voltage of the given component.
 func (m *Mailbox) GetMinVoltage(id VoltageID) (float32, error) {
 	return m.getVoltage(TagGetMinVoltage, id)
 }
@@ -391,10 +344,149 @@ func (m *Mailbox) GetMaxVoltage(id VoltageID) (float32, error) {
 }
 
 func (m *Mailbox) GetTurbo() (bool, error) {
-	tags, err := m.Do(TagGetTurbo, 8, 0)
+	tags, err := m.Do(
+		TagGetTurbo,
+		MailboxTwoWords*MailboxWordBytes, 0,
+	)
 	if err != nil {
 		return false, err
 	}
-	return tags[0].Value()[1] == 1, nil
 
+	return tags[0].Value()[PowerStateReturnIdx] == 1, nil
+}
+
+// alignBuffer ensures the buffer is aligned to a 16-byte boundary.
+func (m *Mailbox) alignBuffer() {
+	if m.buf == nil {
+		offset := uintptr(unsafe.Pointer(&m.bufUnaligned[0])) & (MailboxBufferAlignment - 1)
+		m.buf = m.bufUnaligned[MailboxBufferAlignment-offset : uintptr(len(m.bufUnaligned))-offset]
+	}
+}
+
+// ensureBufferSize sets the buffer size ensuring it can hold all args.
+func (m *Mailbox) ensureBufferSize(bufferBytes, numArgs int) int {
+	minBytes := numArgs * MailboxWordBytes
+	if bufferBytes < minBytes {
+		return minBytes
+	}
+
+	return bufferBytes
+}
+
+// writeRequestHeader writes the message header and tag into the buffer with overflow safety.
+func (m *Mailbox) writeRequestHeader(bufferBytes int, tagID uint32, args []uint32) error {
+	bufLen := len(m.buf)
+
+	computedLen := bufLen * MailboxWordBytes
+	if bufLen < 0 || computedLen < 0 || computedLen > int(math.MaxUint32) {
+		return fmt.Errorf("mailbox header length out of range: %d", computedLen)
+	}
+
+	if bufferBytes < 0 || bufferBytes > int(math.MaxUint32) {
+		return fmt.Errorf("mailbox bufferBytes out of range: %d", bufferBytes)
+	}
+
+	m.buf[0] = uint32(computedLen)
+	m.buf[1] = RequestCodeDefault
+	m.buf[2] = tagID
+	m.buf[3] = uint32(bufferBytes)
+	m.buf[4] = 0 // request
+	copy(m.buf[MailboxRequestHeaderWords:], args)
+
+	return nil
+}
+
+// debugBuffer prints out buffer values for debugging.
+func (m *Mailbox) debugBuffer(format string, buf []uint32) {
+	for i, v := range buf {
+		debugf(format, i, v)
+	}
+}
+
+// sendIOCTL sends the buffer via ioctl.
+func (m *Mailbox) sendIOCTL() error {
+	if err := ioctl.Ioctl(m.f.Fd(), uintptr(mbIoctl), uintptr(unsafe.Pointer(&m.buf[0]))); err != nil {
+		return fmt.Errorf("failed to send via ioctl: %w", err)
+	}
+
+	return nil
+}
+
+// checkResponse checks for errors in the response header.
+func (m *Mailbox) checkResponse() error {
+	switch {
+	case m.buf[1] == replyFail:
+		return ErrRequestBuffer
+	case m.buf[1]&replySuccess != replySuccess:
+		return fmt.Errorf("vcio: unexpected response code: 0x%08x", m.buf[1])
+	}
+
+	return nil
+}
+
+// readAllTags parses all tags from response buffer.
+func (m *Mailbox) readAllTags() ([]Tag, error) {
+	remaining := m.buf[2:]
+
+	var tags []Tag
+
+	for {
+		tag, err := ReadTag(remaining)
+		if err != nil {
+			return nil, err
+		}
+
+		if tag.IsEnd() {
+			break
+		}
+
+		tags = append(tags, tag)
+		remaining = remaining[len(tag):]
+	}
+
+	return tags, nil
+}
+
+func (m *Mailbox) getUint32(tagID uint32) (uint32, error) {
+	tags, err := m.Do(tagID, MailboxWordBytes)
+	if err != nil {
+		return 0, err
+	}
+
+	return tags[0].Value()[GetUint32ReturnIdx], nil
+}
+
+func (m *Mailbox) getUint32ByID(tagID, id uint32) (uint32, error) {
+	tags, err := m.Do(tagID, MailboxTwoWords*MailboxWordBytes, id)
+	if err != nil {
+		return 0, err
+	}
+
+	return tags[0].Value()[ClockRateReturnIdx], nil
+}
+
+func debugf(format string, a ...interface{}) {
+	if !Debug {
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, format, a...)
+}
+
+func (m *Mailbox) getTemperature(tag uint32) (float32, error) {
+	v, err := m.getUint32ByID(tag, 0)
+	if err != nil {
+		return 0, err
+	}
+
+	return float32(v) / MailboxMilliScale, nil
+}
+
+func (m *Mailbox) getVoltage(tag uint32, id VoltageID) (float32, error) {
+	v, err := m.getUint32ByID(tag, uint32(id))
+	if err != nil {
+		return 0, err
+	}
+
+	return float32(v) / MailboxMicroScale, nil
 }

@@ -2,12 +2,13 @@ package main
 
 import (
 	"flag"
-	"log"
 	"net/http"
 	"os"
+	"time"
 
-	"github.com/cavaliercoder/rpi_export/pkg/export/prometheus"
-	"github.com/cavaliercoder/rpi_export/pkg/mbox"
+	"github.com/schubergphilis/rpi_exporter/pkg/export/prometheus"
+	"github.com/schubergphilis/rpi_exporter/pkg/mbox"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -15,19 +16,38 @@ var (
 	flagDebug = flag.Bool("debug", false, "Print debug messages")
 )
 
+const (
+	httpReadTimeout  = 5 * time.Second
+	httpWriteTimeout = 10 * time.Second
+	httpIdleTimeout  = 120 * time.Second
+)
+
 func main() {
 	flag.Parse()
+
 	mbox.Debug = *flagDebug
 
 	if *flagAddr != "" {
-		http.Handle("/metrics", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Handle("/metrics", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			if err := prometheus.Write(w); err != nil {
 				log.Printf("Error: %v", err)
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			}
 		}))
+
 		log.Printf("Listening on %s", *flagAddr)
-		http.ListenAndServe(*flagAddr, nil)
+
+		srv := &http.Server{
+			Addr:         *flagAddr,
+			Handler:      nil,
+			ReadTimeout:  httpReadTimeout,
+			WriteTimeout: httpWriteTimeout,
+			IdleTimeout:  httpIdleTimeout,
+		}
+		if err := srv.ListenAndServe(); err != nil {
+			log.WithError(err).Fatal("unable to listen and serve http")
+		}
+
 		return
 	}
 

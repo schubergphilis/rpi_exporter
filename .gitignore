@@ -1,1 +1,3 @@
-rpi_exporter
+.task
+.vscode
+cmd/rpi_exporter/rpi_exporter

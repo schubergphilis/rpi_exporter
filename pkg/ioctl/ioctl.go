@@ -40,6 +40,7 @@ func Ioctl(fd uintptr, op uintptr, arg uintptr) error {
 	if err == 0 {
 		return nil
 	}
+
 	return err
 }
 

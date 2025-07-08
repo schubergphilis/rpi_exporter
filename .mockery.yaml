@@ -1,0 +1,16 @@
+---
+dir: "{{.InterfaceDir}}/mocks"
+filename: "{{.InterfaceName | snakecase}}.go"
+structname: "{{.InterfaceName}}"
+pkgname: mocks
+template: testify
+packages:
+  github.com/schubergphilis/rpi_exporter/internal/app/rpi_exporter/application:
+    interfaces:
+      Executor: {}
+  github.com/schubergphilis/rpi_exporter/internal/app/rpi_exporter/data:
+    interfaces:
+      Storer: {}
+  github.com/schubergphilis/rpi_exporter/internal/app/rpi_exporter/presentation:
+    interfaces:
+      Presenter: {}
