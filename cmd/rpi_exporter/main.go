@@ -4,6 +4,7 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/schubergphilis/rpi_exporter/pkg/export/prometheus"
 	"github.com/schubergphilis/rpi_exporter/pkg/mbox"
@@ -13,6 +14,12 @@ import (
 var (
 	flagAddr  = flag.String("addr", "", "Listen on address")
 	flagDebug = flag.Bool("debug", false, "Print debug messages")
+)
+
+const (
+	httpReadTimeout  = 5 * time.Second
+	httpWriteTimeout = 10 * time.Second
+	httpIdleTimeout  = 120 * time.Second
 )
 
 func main() {
@@ -27,9 +34,18 @@ func main() {
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			}
 		}))
+
 		log.Printf("Listening on %s", *flagAddr)
-		if err := http.ListenAndServe(*flagAddr, nil); err != nil {
-			log.WithError(err).Fatal("unable to listen and server http")
+
+		srv := &http.Server{
+			Addr:         *flagAddr,
+			Handler:      nil,
+			ReadTimeout:  httpReadTimeout,
+			WriteTimeout: httpWriteTimeout,
+			IdleTimeout:  httpIdleTimeout,
+		}
+		if err := srv.ListenAndServe(); err != nil {
+			log.WithError(err).Fatal("unable to listen and serve http")
 		}
 
 		return

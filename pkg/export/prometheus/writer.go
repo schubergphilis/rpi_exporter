@@ -20,6 +20,12 @@ const (
 	metricTypeGauge = "gauge"
 )
 
+const (
+	fahrenheitFactorNumerator   = 9
+	fahrenheitFactorDenominator = 5
+	fahrenheitOffset            = 32
+)
+
 var voltageLabelsByID = map[mbox.VoltageID]string{
 	mbox.VoltageIDCore:   "core",
 	mbox.VoltageIDSDRAMC: "sdram_c",
@@ -234,7 +240,7 @@ func (w *expWriter) writeTemperatures(mboxOpen *mbox.Mailbox) error {
 	w.writeSample(formatTemp(temp), "soc")
 
 	w.writeHeaderGauge("rpi_temperature_f", "Temperature of the SoC in degrees fahrenheit.", metricTypeGauge, "id")
-	w.writeSample(formatTemp(temp*9/5+32), "soc")
+	w.writeSample(formatTemp(temp*fahrenheitFactorNumerator/fahrenheitFactorDenominator+fahrenheitOffset), "soc")
 
 	w.writeHeaderGauge(
 		"rpi_max_temperature_c",
@@ -255,7 +261,7 @@ func (w *expWriter) writeTemperatures(mboxOpen *mbox.Mailbox) error {
 		"Maximum temperature of the SoC in degrees fahrenheit.",
 		metricTypeGauge,
 		"id")
-	w.writeSample(formatTemp(maxTemp*9/5+32), "soc")
+	w.writeSample(formatTemp(temp*fahrenheitFactorNumerator/fahrenheitFactorDenominator+fahrenheitOffset), "soc")
 
 	return nil
 }

@@ -370,8 +370,8 @@ func (m *Mailbox) writeRequestHeader(bufferBytes int, tagID uint32, args []uint3
 	m.buf[1] = RequestCodeDefault
 	m.buf[2] = tagID
 	m.buf[3] = uint32(bufferBytes)
-	m.buf[4] = 0                                  // request
-	copy(m.buf[MailboxRequestHeaderWords:], args) // TODO: zero remaining buffer and end tag
+	m.buf[4] = 0 // request
+	copy(m.buf[MailboxRequestHeaderWords:], args)
 }
 
 // debugBuffer prints out buffer values for debugging.
