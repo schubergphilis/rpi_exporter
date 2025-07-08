@@ -78,11 +78,11 @@ func Write(w io.Writer) error {
 	return ew.write()
 }
 
-func (w *expWriter) writeHeader(name, help, metricType string, labels ...string) {
+func (w *expWriter) writeHeaderGauge(name, help string, labels ...string) {
 	w.name = name
 	w.labels = labels
 	fmt.Fprintf(w.w, "# HELP %s %s\n", name, help)
-	fmt.Fprintf(w.w, "# TYPE %s %v\n", name, metricType)
+	fmt.Fprintf(w.w, "# TYPE %s %v\n", name, "gauge")
 }
 
 func (w *expWriter) writeSample(val interface{}, labels ...string) {
@@ -125,7 +125,7 @@ func (w *expWriter) write() error {
 	/*
 	 * Hardware.
 	 */
-	w.writeHeader("rpi_vc_revision", "Firmware revision of the VideoCore device.", metricTypeGauge)
+	w.writeHeaderGauge("rpi_vc_revision", "Firmware revision of the VideoCore device.", metricTypeGauge)
 
 	rev, err := mboxOpen.GetFirmwareRevision()
 	if err != nil {
@@ -134,7 +134,7 @@ func (w *expWriter) write() error {
 
 	w.writeSample(rev)
 
-	w.writeHeader("rpi_board_model", "Board model.", metricTypeGauge)
+	w.writeHeaderGauge("rpi_board_model", "Board model.", metricTypeGauge)
 
 	model, err := mboxOpen.GetBoardModel()
 	if err != nil {
@@ -143,7 +143,7 @@ func (w *expWriter) write() error {
 
 	w.writeSample(model)
 
-	w.writeHeader("rpi_board_revision", "Board revision.", metricTypeGauge)
+	w.writeHeaderGauge("rpi_board_revision", "Board revision.", metricTypeGauge)
 
 	rev, err = mboxOpen.GetBoardRevision()
 	if err != nil {
@@ -155,7 +155,7 @@ func (w *expWriter) write() error {
 	/*
 	 * Power.
 	 */
-	w.writeHeader(
+	w.writeHeaderGauge(
 		"rpi_power_state",
 		"Component power state (0: off, 1: on, 2: missing).",
 		metricTypeGauge,
@@ -174,7 +174,7 @@ func (w *expWriter) write() error {
 	/*
 	 * Clocks.
 	 */
-	w.writeHeader("rpi_clock_rate_hz", "Clock rate in Hertz.", metricTypeGauge, "id")
+	w.writeHeaderGauge("rpi_clock_rate_hz", "Clock rate in Hertz.", metricTypeGauge, "id")
 
 	for id, label := range clockLabelsByID {
 		clockRate, err := mboxOpen.GetClockRate(id)
@@ -185,7 +185,7 @@ func (w *expWriter) write() error {
 		w.writeSample(clockRate, label)
 	}
 
-	w.writeHeader("rpi_clock_rate_measured_hz", "Measured clock rate in Hertz.", metricTypeGauge, "id")
+	w.writeHeaderGauge("rpi_clock_rate_measured_hz", "Measured clock rate in Hertz.", metricTypeGauge, "id")
 
 	for id, label := range clockLabelsByID {
 		clockRate, err := mboxOpen.GetClockRateMeasured(id)
@@ -196,7 +196,7 @@ func (w *expWriter) write() error {
 		w.writeSample(clockRate, label)
 	}
 
-	w.writeHeader("rpi_turbo", "Turbo state.", metricTypeGauge)
+	w.writeHeaderGauge("rpi_turbo", "Turbo state.", metricTypeGauge)
 
 	turbo, err := mboxOpen.GetTurbo()
 	if err != nil {
@@ -210,7 +210,7 @@ func (w *expWriter) write() error {
 	 */
 
 	// Current SoC temperature
-	w.writeHeader(
+	w.writeHeaderGauge(
 		"rpi_temperature_c",
 		"Temperature of the SoC in degrees celsius.",
 		metricTypeGauge,
@@ -223,7 +223,7 @@ func (w *expWriter) write() error {
 	}
 
 	w.writeSample(formatTemp(temp), "soc")
-	w.writeHeader(
+	w.writeHeaderGauge(
 		"rpi_temperature_f",
 		"Temperature of the SoC in degrees fahrenheit.",
 		metricTypeGauge,
@@ -232,7 +232,7 @@ func (w *expWriter) write() error {
 	w.writeSample(formatTemp(temp*9/5+32), "soc")
 
 	// Max SoC temperature
-	w.writeHeader(
+	w.writeHeaderGauge(
 		"rpi_max_temperature_c",
 		"Maximum temperature of the SoC in degrees celsius.",
 		metricTypeGauge,
@@ -245,7 +245,7 @@ func (w *expWriter) write() error {
 	}
 
 	w.writeSample(formatTemp(maxTemp), "soc")
-	w.writeHeader(
+	w.writeHeaderGauge(
 		"rpi_max_temperature_f",
 		"Maximum temperature of the SoC in degrees fahrenheit.",
 		metricTypeGauge,
@@ -258,7 +258,7 @@ func (w *expWriter) write() error {
 	 */
 
 	// Current voltages.
-	w.writeHeader("rpi_voltage", "Current component voltage.", metricTypeGauge, "id")
+	w.writeHeaderGauge("rpi_voltage", "Current component voltage.", metricTypeGauge, "id")
 
 	for id, label := range voltageLabelsByID {
 		volts, err := mboxOpen.GetVoltage(id)
@@ -269,7 +269,7 @@ func (w *expWriter) write() error {
 		w.writeSample(formatVolts(volts), label)
 	}
 
-	w.writeHeader("rpi_voltage_min", "Minimum supported component voltage.", metricTypeGauge, "id")
+	w.writeHeaderGauge("rpi_voltage_min", "Minimum supported component voltage.", metricTypeGauge, "id")
 
 	for id, label := range voltageLabelsByID {
 		volts, err := mboxOpen.GetMinVoltage(id)
@@ -280,7 +280,7 @@ func (w *expWriter) write() error {
 		w.writeSample(formatVolts(volts), label)
 	}
 
-	w.writeHeader("rpi_voltage_max", "Maximum supported component voltage.", metricTypeGauge, "id")
+	w.writeHeaderGauge("rpi_voltage_max", "Maximum supported component voltage.", metricTypeGauge, "id")
 
 	for id, label := range voltageLabelsByID {
 		volts, err := mboxOpen.GetMaxVoltage(id)
