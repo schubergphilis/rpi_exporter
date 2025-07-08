@@ -21,7 +21,7 @@ func main() {
 	mbox.Debug = *flagDebug
 
 	if *flagAddr != "" {
-		http.Handle("/metrics", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Handle("/metrics", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			if err := prometheus.Write(w); err != nil {
 				log.Printf("Error: %v", err)
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

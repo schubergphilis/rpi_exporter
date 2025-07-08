@@ -160,13 +160,13 @@ func Open() (f *Mailbox, err error) {
 	return &Mailbox{f: vcioFile}, nil
 }
 
-func (c *Mailbox) Close() (err error) {
-	if c == nil || c.f == nil {
+func (m *Mailbox) Close() (err error) {
+	if m == nil || m.f == nil {
 		return nil
 	}
 
-	err = c.f.Close()
-	c.f = nil
+	err = m.f.Close()
+	m.f = nil
 
 	return
 }
