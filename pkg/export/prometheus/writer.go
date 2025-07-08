@@ -90,7 +90,7 @@ func (w *expWriter) writeSample(val interface{}, labels ...string) {
 		panic("developer error: incorrect metrics label count")
 	}
 
-	fmt.Fprintf(w.w, w.name)
+	fmt.Fprint(w.w, w.name)
 
 	if len(w.labels) > 0 {
 		fmt.Fprintf(w.w, "{")
