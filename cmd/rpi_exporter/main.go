@@ -2,12 +2,12 @@ package main
 
 import (
 	"flag"
-	"log"
 	"net/http"
 	"os"
 
-	"github.com/cavaliercoder/rpi_export/pkg/export/prometheus"
-	"github.com/cavaliercoder/rpi_export/pkg/mbox"
+	"github.com/schubergphilis/rpi_exporter/pkg/export/prometheus"
+	"github.com/schubergphilis/rpi_exporter/pkg/mbox"
+	log "github.com/sirupsen/logrus"
 )
 
 var (

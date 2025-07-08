@@ -24,6 +24,10 @@ linters:
             - "!**/*_a _file.go"
           allow:
             - $gostd
+            - github.com/schubergphilis/rpi_exporter/pkg/export/prometheus
+            - github.com/schubergphilis/rpi_exporter/pkg/ioctl
+            - github.com/schubergphilis/rpi_exporter/pkg/mbox
+            - github.com/sirupsen/logrus
           deny:
             - pkg: log
               desc: Use 'log "github.com/sirupsen/logrus"' instead
