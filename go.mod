@@ -1,6 +1,6 @@
 module github.com/schubergphilis/rpi_exporter
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/sirupsen/logrus v1.9.3
